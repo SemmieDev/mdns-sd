@@ -807,6 +807,10 @@ fn decode_txt_unique(txt: &[u8]) -> Vec<TxtProperty> {
 
 /// Returns true if `addr` is in the same network of `intf`.
 pub(crate) fn valid_ip_on_intf(addr: &IpAddr, intf: &Interface) -> bool {
+    if addr.is_loopback() {
+        return true;
+    }
+    
     match (addr, &intf.addr) {
         (IpAddr::V4(addr), IfAddr::V4(intf)) => {
             let netmask = u32::from(intf.netmask);
