@@ -2602,7 +2602,7 @@ impl Zeroconf {
 
         let next_time = current_time_millis() + (next_delay * 1000) as u64;
         let max_delay = 60 * 60;
-        let delay = cmp::min(next_delay * 2, max_delay);
+        let delay = cmp::min(next_delay, max_delay);
         self.add_retransmission(next_time, Command::Browse(ty, delay, listener));
     }
 
