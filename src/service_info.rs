@@ -666,6 +666,12 @@ pub trait IntoTxtProperties {
     fn into_txt_properties(self) -> TxtProperties;
 }
 
+impl IntoTxtProperties for TxtProperties {
+    fn into_txt_properties(self) -> TxtProperties {
+        self
+    }
+}
+
 impl IntoTxtProperties for HashMap<String, String> {
     fn into_txt_properties(mut self) -> TxtProperties {
         let properties = self
