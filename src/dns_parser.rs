@@ -9,6 +9,8 @@ use crate::log::trace;
 
 use crate::error::{e_fmt, Error, Result};
 
+use if_addrs::Interface;
+
 use std::{
     any::Any,
     cmp,
@@ -19,6 +21,34 @@ use std::{
     str,
     time::SystemTime,
 };
+
+/// InterfaceId is used to represent the interface identifier
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct InterfaceId {
+    name: String,
+    index: u32,
+}
+
+impl InterfaceId {
+    pub fn index(&self) -> u32 {
+        self.index
+    }
+}
+
+impl fmt::Display for InterfaceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.index, self.name)
+    }
+}
+
+impl From<&Interface> for InterfaceId {
+    fn from(interface: &Interface) -> Self {
+        InterfaceId {
+            name: interface.name.clone(),
+            index: interface.index.unwrap_or_default(),
+        }
+    }
+}
 
 /// DNS resource record types, stored as `u16`. Can do `as u16` when needed.
 ///
@@ -252,6 +282,13 @@ impl DnsRecord {
         now >= self.expires
     }
 
+    /// Returns whether record expires in 1 second.
+    ///
+    /// This is useful because mDNS sets TTL to 1 (not 0) for expiring records.
+    pub const fn expires_soon(&self, now: u64) -> bool {
+        now + 1000 >= self.expires
+    }
+
     pub const fn refresh_due(&self, now: u64) -> bool {
         now >= self.refresh
     }
@@ -322,8 +359,14 @@ impl DnsRecord {
     fn reset_ttl(&mut self, other: &Self) {
         self.ttl = other.ttl;
         self.created = other.created;
-        self.refresh = get_expiration_time(self.created, self.ttl, 80);
         self.expires = get_expiration_time(self.created, self.ttl, 100);
+        self.refresh = if self.ttl > 1 {
+            get_expiration_time(self.created, self.ttl, 80)
+        } else {
+            // If TTL is 1, it means this record is expiring,
+            // then we set refresh to the same time as expires.
+            self.expires
+        };
     }
 
     /// Modify TTL to reflect the remaining life time from `now`.
@@ -449,6 +492,11 @@ pub trait DnsRecordExt: fmt::Debug {
         }
     }
 
+    /// Returns true if the record expires in 1 second from `now`.
+    fn expires_soon(&self, now: u64) -> bool {
+        self.get_record().expires_soon(now)
+    }
+
     /// Given `now`, if the record is due to refresh, this method updates the refresh time
     /// and returns the new refresh time. Otherwise, returns None.
     fn updated_refresh_time(&mut self, now: u64) -> Option<u64> {
@@ -485,12 +533,24 @@ pub trait DnsRecordExt: fmt::Debug {
 pub struct DnsAddress {
     pub(crate) record: DnsRecord,
     address: IpAddr,
+    interface_id: InterfaceId,
 }
 
 impl DnsAddress {
-    pub fn new(name: &str, ty: RRType, class: u16, ttl: u32, address: IpAddr) -> Self {
+    pub fn new(
+        name: &str,
+        ty: RRType,
+        class: u16,
+        ttl: u32,
+        address: IpAddr,
+        interface_id: InterfaceId,
+    ) -> Self {
         let record = DnsRecord::new(name, ty, class, ttl);
-        Self { record, address }
+        Self {
+            record,
+            address,
+            interface_id,
+        }
     }
 
     pub fn address(&self) -> IpAddr {
@@ -520,7 +580,9 @@ impl DnsRecordExt for DnsAddress {
 
     fn matches(&self, other: &dyn DnsRecordExt) -> bool {
         if let Some(other_a) = other.any().downcast_ref::<Self>() {
-            return self.address == other_a.address && self.record.entry == other_a.record.entry;
+            return self.address == other_a.address
+                && self.record.entry == other_a.record.entry
+                && self.interface_id == other_a.interface_id;
         }
         false
     }
@@ -1450,6 +1512,11 @@ impl DnsOutgoing {
         &self.questions
     }
 
+    /// For testing purposes only.
+    pub(crate) fn _answers(&self) -> &[(DnsRecordBox, u64)] {
+        &self.answers
+    }
+
     pub fn answers_count(&self) -> usize {
         self.answers.len()
     }
@@ -1661,10 +1728,11 @@ pub struct DnsIncoming {
     num_answers: u16,
     num_authorities: u16,
     num_additionals: u16,
+    interface_id: InterfaceId,
 }
 
 impl DnsIncoming {
-    pub fn new(data: Vec<u8>) -> Result<Self> {
+    pub fn new(data: Vec<u8>, interface_id: InterfaceId) -> Result<Self> {
         let mut incoming = Self {
             offset: 0,
             data,
@@ -1678,6 +1746,7 @@ impl DnsIncoming {
             num_answers: 0,
             num_authorities: 0,
             num_additionals: 0,
+            interface_id,
         };
 
         /*
@@ -1945,12 +2014,26 @@ impl DnsIncoming {
                         .boxed(),
                     ),
                     RRType::A => Some(
-                        DnsAddress::new(&name, rr_type, class, ttl, self.read_ipv4()?.into())
-                            .boxed(),
+                        DnsAddress::new(
+                            &name,
+                            rr_type,
+                            class,
+                            ttl,
+                            self.read_ipv4()?.into(),
+                            self.interface_id.clone(),
+                        )
+                        .boxed(),
                     ),
                     RRType::AAAA => Some(
-                        DnsAddress::new(&name, rr_type, class, ttl, self.read_ipv6()?.into())
-                            .boxed(),
+                        DnsAddress::new(
+                            &name,
+                            rr_type,
+                            class,
+                            ttl,
+                            self.read_ipv6()?.into(),
+                            self.interface_id.clone(),
+                        )
+                        .boxed(),
                     ),
                     RRType::NSEC => Some(
                         DnsNSec::new(

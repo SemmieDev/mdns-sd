@@ -1,3 +1,33 @@
+# Version 0.13.9 (2025-04-22)
+
+This is a bugfix release.
+
+* `a734dd2 2025-05-02` bugfix: refresh TXT when needed (#354) (keepsimple1)
+* `51c03c3 2025-05-01` bugfix: TXT records should use OTHER_TTL same as PTR (#355) (keepsimple1)
+* `07750cb 2025-04-25` bugfix: only remove a service instance if all its SRV are gone (#350) (keepsimple1)
+
+# Version 0.13.8 (2025-04-22)
+
+This is a bugfix release that also prepares for adding InterfaceId in resolved service info.
+
+* `2d49195 2025-04-22` bugfix: should keep A records for hostname queriers (#348) (keepsimple1)
+* `fe08df1 2025-04-22` bump up version to 0.13.8 (#347) (keepsimple1)
+* `f6c7e80 2025-04-22` feat: extend `DnsAddress` with an `InterfaceId` (#342) (hrzlgnm)
+* `513372d 2025-04-20` remove address filter for multicast loopback (#346) (keepsimple1)
+
+# Version 0.13.7 (2025-04-15)
+
+This is a bugfix release that further reduces the memory footprint of DNS cache.
+
+* `a6a0961 2025-04-15` optimization: remove cache entries when stop_browse (#344) (keepsimple1)
+
+# Version 0.13.6 (2025-04-07)
+
+This is a bugfix release that reduces / limits the memory footprint of the cached records and timers.
+
+* `5fa1b31 2025-04-07` optimization: remove expired timers and skip DNS datagrams that are not for us (#338) (keepsimple1)
+* `3e3aec9 2025-03-29` refactoring: make tiebreaking more modular (#336) (keepsimple1)
+
 # Version 0.13.5 (2025-03-25)
 
 This is a patch fix release as the previous release (0.13.4) was broken in service resolution.
